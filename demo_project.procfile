@@ -1,0 +1,3 @@
+gunicorn: gunicorn demo_project:application --bind 127.0.0.1:8001
+python: python demo_project.py runserver 127.0.0.1:8000
+uwsgi: uwsgi --http :8002 --wsgi-file demo_project.py --virtualenv $VIRTUAL_ENV
