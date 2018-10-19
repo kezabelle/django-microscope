@@ -8,12 +8,12 @@ import os
 import sys
 from collections import Iterable, Sized
 from itertools import chain
-from django.conf import settings, LazySettings
-from django.core.exceptions import ImproperlyConfigured
-from django.utils.six import integer_types, string_types
-from django.utils.functional import SimpleLazyObject as Lazy
-from django.utils.module_loading import import_string
-from environ import Env
+from django.conf import settings, LazySettings  # type: ignore
+from django.core.exceptions import ImproperlyConfigured  # type: ignore
+from django.utils.six import integer_types, string_types  # type: ignore
+from django.utils.functional import SimpleLazyObject as Lazy  # type: ignore
+from django.utils.module_loading import import_string  # type: ignore
+from environ import Env  # type: ignore
 
 try:
     # noinspection PyUnresolvedReferences
@@ -30,7 +30,7 @@ except ImportError:
 
 if TYPE_CHECKING:
     # noinspection PyUnresolvedReferences
-    import django
+    import django  # type: ignore
 
 
 __all__ = ["app", "config", "run", "env"]
@@ -264,12 +264,12 @@ def app():
             )
             sys.exit(1)
 
-        from django.core.management import execute_from_command_line
+        from django.core.management import execute_from_command_line  # type: ignore
 
         execute_from_command_line(sys.argv)
         return None
 
-    from django.core.wsgi import get_wsgi_application
+    from django.core.wsgi import get_wsgi_application  # type: ignore
 
     return get_wsgi_application()
 
