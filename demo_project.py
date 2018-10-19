@@ -9,4 +9,6 @@ def urls():
 application = run(
     DEBUG=True,
     ROOT_URLCONF=urls,
+    __name__=__name__,
+    __file__=__file__,
 )

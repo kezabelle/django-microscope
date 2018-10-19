@@ -205,7 +205,7 @@ class BoundaryWarning(object):
         return None
 
 
-def app():
+def app(name=None, runner=None):
     join = os.path.join
     exists = os.path.exists
     abspath = os.path.abspath
@@ -218,15 +218,17 @@ def app():
 
     # Walk backwards through the frames until we find the __name__, which should
     # also give us the filename running the script.
-    runner = None
-    name = None
-    parent_frame = frame
-    while parent_frame.f_locals:
-        if "__name__" in parent_frame.f_locals:
-            runner = parent_frame.f_code.co_filename  # type: str
-            name = parent_frame.f_locals["__name__"]  # type: str
-            break
-        parent_frame = parent_frame.f_back
+    if name is None or runner is None:
+        runner = None
+        name = None
+        parent_frame = frame
+        while parent_frame.f_locals:
+            print(parent_frame.f_locals)
+            if "__name__" in parent_frame.f_locals:
+                runner = parent_frame.f_code.co_filename  # type: str
+                name = parent_frame.f_locals["__name__"]  # type: str
+                break
+            parent_frame = parent_frame.f_back
     assert (
         runner is not None
     ), "Couldn't figure out which file had __name__ == '__main__'"
@@ -277,5 +279,10 @@ def app():
 # noinspection PyPep8Naming
 def run(**DEFAULTS):
     # type: (Dict[str, Any]) -> Union[None, 'django.core.handlers.wsgi.WSGIHandler']
+    app_kwargs = {"name": None, "runner": None}
+    if "__name__" in DEFAULTS:
+        app_kwargs["name"] = DEFAULTS.pop("__name__")
+    if "__file__" in DEFAULTS:
+        app_kwargs["runner"] = DEFAULTS.pop("__file__")
     config(**DEFAULTS)
-    return app()
+    return app(**app_kwargs)
