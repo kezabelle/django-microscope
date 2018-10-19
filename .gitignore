@@ -3,3 +3,5 @@ dist
 *.pyo
 *.pyc.coverage
 *.egg*
+*.c
+*.so
