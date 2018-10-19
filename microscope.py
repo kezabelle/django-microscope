@@ -256,7 +256,7 @@ def app():
         sys.meta_path.insert(0, BoundaryWarning(app_parent, app_dir))
         if app_parent not in sys.path:
             sys.path.insert(0, app_parent)
-    del runner, root, app_heuristics, appish_files, appish_dirs, in_app
+    del runner, root, in_app
     if name == "__main__":
         if len(sys.argv) > 1 and sys.argv[1] == "diffsettings":
             sys.stderr.write(
