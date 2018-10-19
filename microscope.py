@@ -27,6 +27,8 @@ try:
         Dict,
         Tuple,
         Optional,
+        Type,
+        Sequence,
     )
 except ImportError:
     TYPE_CHECKING = False
@@ -37,6 +39,11 @@ except ImportError:
     class JSONDecodeError(NotImplementedError):  # type: ignore
         pass
 
+
+try:
+    from importlib.abc import MetaPathFinder
+except ImportError:
+    MetaPathFinder = object  # type: ignore
 
 if TYPE_CHECKING:
     # noinspection PyUnresolvedReferences
@@ -49,23 +56,24 @@ logger = logging.getLogger(__name__)
 
 class TrackedEnv(Env):
     def __init__(self, **scheme):
+        # type: (dict) -> None
         super(TrackedEnv, self).__init__(**scheme)
-        self.seen_settings = set()
+        self.seen_settings = set()  # type: Set[str]
 
-    def get_value(self, var, *args, **kwargs):
+    def get_value(self, var, *args, **kwargs):  # type: ignore
         val = super(TrackedEnv, self).get_value(var, *args, **kwargs)
         if var in self.ENVIRON:
             self.seen_settings.add(var)
         return val
 
-    def __str__(self):
+    def __str__(self):  # type: ignore
         return ", ".join(sorted(self.seen_settings))
 
-    def __unicode__(self):
+    def __unicode__(self):  # type: ignore
         # noinspection PyUnresolvedReferences
         return unicode(self.__str__())
 
-    def __repr__(self):
+    def __repr__(self):  # type: ignore
         return "<Env of {0!s}>".format(self)
 
 
@@ -74,17 +82,17 @@ env = TrackedEnv()
 
 # noinspection PyClassHasNoInit
 class SimpleLazyObject(Lazy):
-    def __str__(self):
+    def __str__(self):  # type: ignore
         name = self._setupfunc.__name__
         main = getattr(self._setupfunc, "__code__", None)
         main = getattr(main, "co_filename", "__main__")
         return "{prefix!s} -> {func!s}()".format(func=name, prefix=main)
 
-    def __unicode__(self):
+    def __unicode__(self):  # type: ignore
         # noinspection PyUnresolvedReferences
         return unicode(self.__str__())
 
-    def __hash__(self):
+    def __hash__(self):  # type: ignore
         return hash(tuple(self))
 
 
@@ -175,7 +183,7 @@ def config(**DEFAULTS):
     return settings
 
 
-class BoundaryWarning(object):
+class BoundaryWarning(MetaPathFinder):
     # http://xion.org.pl/2012/05/06/hacking-python-imports/
     __slots__ = (
         "root_location",
@@ -194,7 +202,6 @@ class BoundaryWarning(object):
         self.already_warned = set()  # type: Set[Tuple[str, str, str]]
 
     def find_module(self, fullname, path=None):
-        # type: (str, Union[List[str], None]) -> None
         if path is None:
             return None
         package_root, _, remainder = fullname.partition(".")
@@ -216,6 +223,7 @@ class BoundaryWarning(object):
 
 
 def app(name=None, runner=None):
+    # type: (Optional[str], Optional[str]) -> Optional['django.core.handlers.wsgi.WSGIHandler']
     join = os.path.join
     exists = os.path.exists
     abspath = os.path.abspath
@@ -235,8 +243,8 @@ def app(name=None, runner=None):
         while parent_frame.f_locals:
             print(parent_frame.f_locals)
             if "__name__" in parent_frame.f_locals:
-                runner = parent_frame.f_code.co_filename  # type: str
-                name = parent_frame.f_locals["__name__"]  # type: str
+                runner = parent_frame.f_code.co_filename
+                name = parent_frame.f_locals["__name__"]
                 break
             parent_frame = parent_frame.f_back
     assert (
@@ -288,8 +296,7 @@ def app(name=None, runner=None):
 
 # noinspection PyPep8Naming
 def run(**DEFAULTS):
-    # type: (Dict[str, Any]) -> Union[None, 'django.core.handlers.wsgi.WSGIHandler']
-    app_kwargs = {"name": None, "runner": None}
+    app_kwargs = {"name": None, "runner": None}  # type: Dict[str, Optional[str]]
     if "__name__" in DEFAULTS:
         app_kwargs["name"] = DEFAULTS.pop("__name__")
     if "__file__" in DEFAULTS:

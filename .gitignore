@@ -5,3 +5,4 @@ dist
 *.egg*
 *.c
 *.so
+.mypy_cache
