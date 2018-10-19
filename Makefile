@@ -57,3 +57,6 @@ mypy: clean-build clean-pyc
 cythonize: clean-build clean-pyc
 	cythonize -i -3 microscope.py
 	cythonize -i -3 demo_project.py
+
+black:
+	black microscope.py

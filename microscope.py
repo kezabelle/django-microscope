@@ -17,7 +17,17 @@ from environ import Env  # type: ignore
 
 try:
     # noinspection PyUnresolvedReferences
-    from typing import TYPE_CHECKING, Any, Set, AnyStr, Union, List, Dict, Tuple
+    from typing import (
+        TYPE_CHECKING,
+        Any,
+        Set,
+        AnyStr,
+        Union,
+        List,
+        Dict,
+        Tuple,
+        Optional,
+    )
 except ImportError:
     TYPE_CHECKING = False
 try:
