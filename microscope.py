@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals, absolute_import
+
+import functools
 from functools import partial
 from decimal import Decimal
 from uuid import UUID
@@ -10,8 +12,9 @@ from collections import Iterable, Sized
 from itertools import chain
 from django.conf import settings, LazySettings  # type: ignore
 from django.core.exceptions import ImproperlyConfigured  # type: ignore
+from django.urls import path, re_path
 from django.utils.six import integer_types, string_types  # type: ignore
-from django.utils.functional import SimpleLazyObject as Lazy  # type: ignore
+from django.utils.functional import SimpleLazyObject as SLO  # type: ignore
 from django.utils.module_loading import import_string  # type: ignore
 from environ import Env  # type: ignore
 
@@ -76,12 +79,15 @@ class TrackedEnv(Env):
     def __repr__(self):  # type: ignore
         return "<Env of {0!s}>".format(self)
 
+    def __bool__(self):
+        return len(self.seen_settings) > 0
+
 
 env = TrackedEnv()
 
 
 # noinspection PyClassHasNoInit
-class SimpleLazyObject(Lazy):
+class SimpleLazyObject(SLO):
     def __str__(self):  # type: ignore
         name = self._setupfunc.__name__
         main = getattr(self._setupfunc, "__code__", None)
@@ -107,17 +113,57 @@ def flatten(items):
 
 
 def urlconf(dotted_path):
-    # type: (str) -> list
-    return import_string(dotted_path)
+    # type: (str) -> partial[Any]
+    lazy = functools.partial(import_string, dotted_path)
+    lazy.__name__ = "microscope.urlconf('{}')".format(dotted_path)  # type: ignore
+    lazy.__doc__ = "Deferred importer for another set of urlpatterns"
+    return lazy
+
+
+class Routes(list):
+    def add(self, item):
+        self.append(item)
+
+    def __call__(self):
+        return tuple(self)
+
+    def _decorator(self, handler, url, view, name=None, kwargs=None):
+        if callable(url) and name is None and kwargs is None:
+            raise ValueError(
+                "Used @routes.path instead of @routes.path('path/', 'viewname', kwargs={...})"
+            )
+
+        @functools.wraps(view)
+        def decorator(view):
+            if hasattr(view, "as_view") and callable(view.as_view):
+                view = view.as_view()
+            decorated = handler(url, view, name=name, kwargs=kwargs)
+            self.add(decorated)
+
+        return decorator
+
+    def path(self, url, view=None, name=None, kwargs=None):
+        return self._decorator(
+            url=url, name=name, view=view, kwargs=kwargs, handler=path
+        )
+
+    def regex(self, url, view, name=None, kwargs=None):
+        return self._decorator(
+            url=url, name=name, view=view, kwargs=kwargs, handler=re_path
+        )
+
+
+routes = Routes()
 
 
 # noinspection PyPep8Naming
-def config(**DEFAULTS):
-    # type: (Dict[str, Any]) -> LazySettings
+def config(__name__=None, __file__=None, **DEFAULTS):
+    # type: (Optional[str], Optional[str], Dict[str, Any]) -> LazySettings
     if settings.configured:
         raise RuntimeError(
             "config() has already been called, OR django.conf.settings.configure() was already called"
         )
+    setup(__name__, __name__)
 
     options = {}  # type: Dict[str, Any]
     try:
@@ -222,61 +268,88 @@ class BoundaryWarning(MetaPathFinder):
         return None
 
 
-def app(name=None, runner=None):
+class Setup(object):
+    __slots__ = ("name", "runner", "in_app", "done")
+
+    def __init__(self):
+        self.name = None  # type: Optional[str]
+        self.runner = None  # type: Optional[str]
+        self.in_app = False  # type: bool
+        self.done = False  # type: bool
+
+    def __call__(self, name, runner):
+        # type: (Optional[str], Optional[str]) -> Tuple[str, str]
+        if self.done is True:
+            assert self.name is not None
+            assert self.runner is not None
+            return self.name, self.runner
+        self.name, self.runner = self.get_name_runner(name, runner)
+        assert (
+            self.runner is not None
+        ), "Couldn't figure out which file had __name__ == '__main__'"
+        assert self.name is not None, "Couldn't figure out if __name__ == '__main__'"
+        self.in_app = self.determine_if_in_app_root(self.runner)
+        self.done = True
+        return self.name, self.runner
+
+    def determine_if_in_app_root(self, runner):
+        # type: (str) -> bool
+        join = os.path.join
+        exists = os.path.exists
+        abspath = os.path.abspath
+        dirname = os.path.dirname
+        root = abspath(runner)
+        app_dir = abspath(dirname(root))
+        app_parent = abspath(dirname(app_dir))
+        # If it looks like a normal Django app, and it might be downstream of a
+        # project folder (eg: project/appname) then we may need to add the
+        # parent dir (eg: project) to the path.
+        # To try and make sure this doesn't bring in a whole load of
+        # inter-dependencies, we insert a class which raises a warning if an import
+        # into another app within the parent dir (eg: project/app2) occurs.
+        app_heuristics = ("admin", "apps", "forms", "models", "views", "urls")
+        appish_files = (
+            join(app_dir, "{0!s}.py".format(heuristic)) for heuristic in app_heuristics
+        )
+        appish_dirs = (
+            join(app_dir, heuristic, "__init__.py") for heuristic in app_heuristics
+        )
+        in_app = any(exists(path) for path in chain(appish_files, appish_dirs))
+        if in_app:
+            sys.meta_path.insert(0, BoundaryWarning(app_parent, app_dir))
+            if app_parent not in sys.path:
+                sys.path.insert(0, app_parent)
+            return True
+        return False
+
+    def get_name_runner(self, name=None, runner=None):
+        # type: (Optional[str], Optional[str]) -> Tuple[Optional[str], Optional[str]]
+        if name is None or runner is None:
+            runner = None
+            name = None
+            parent_frame = sys._getframe()
+            while parent_frame.f_locals:
+                print(parent_frame.f_locals)
+                if "__name__" in parent_frame.f_locals:
+                    runner = parent_frame.f_code.co_filename
+                    name = parent_frame.f_locals["__name__"]
+                    break
+                parent_frame = parent_frame.f_back
+        return name, runner
+
+
+setup = Setup()
+
+
+def app(__name__=None, __file__=None):
     # type: (Optional[str], Optional[str]) -> Optional['django.core.handlers.wsgi.WSGIHandler']
-    join = os.path.join
-    exists = os.path.exists
-    abspath = os.path.abspath
-    dirname = os.path.dirname
-
-    # noinspection PyProtectedMember
-    frame = sys._getframe()
-    # noinspection PyUnusedLocal
-    this_file = frame.f_code.co_filename
-
-    # Walk backwards through the frames until we find the __name__, which should
-    # also give us the filename running the script.
-    if name is None or runner is None:
-        runner = None
-        name = None
-        parent_frame = frame
-        while parent_frame.f_locals:
-            print(parent_frame.f_locals)
-            if "__name__" in parent_frame.f_locals:
-                runner = parent_frame.f_code.co_filename
-                name = parent_frame.f_locals["__name__"]
-                break
-            parent_frame = parent_frame.f_back
-    assert (
-        runner is not None
-    ), "Couldn't figure out which file had __name__ == '__main__'"
-    assert name is not None, "Couldn't figure out if __name__ == '__main__'"
-
-    root = abspath(runner)
-    app_dir = abspath(dirname(root))
-    app_parent = abspath(dirname(app_dir))
     if not settings.configured:
         raise RuntimeError("config() has not been called")
+    name, runner = setup(__name__, __name__)
 
-    # If it looks like a normal Django app, and it might be downstream of a
-    # project folder (eg: project/appname) then we may need to add the
-    # parent dir (eg: project) to the path.
-    # To try and make sure this doesn't bring in a whole load of
-    # inter-dependencies, we insert a class which raises a warning if an import
-    # into another app within the parent dir (eg: project/app2) occurs.
-    app_heuristics = ("admin", "apps", "forms", "models", "views", "urls")
-    appish_files = (
-        join(app_dir, "{0!s}.py".format(heuristic)) for heuristic in app_heuristics
-    )
-    appish_dirs = (
-        join(app_dir, heuristic, "__init__.py") for heuristic in app_heuristics
-    )
-    in_app = any(exists(path) for path in chain(appish_files, appish_dirs))
-    if in_app:
-        sys.meta_path.insert(0, BoundaryWarning(app_parent, app_dir))
-        if app_parent not in sys.path:
-            sys.path.insert(0, app_parent)
-    del runner, root, in_app
+    if env:
+        logger.warning("Read %s from environment variables", env)
+
     if name == "__main__":
         if len(sys.argv) > 1 and sys.argv[1] == "diffsettings":
             sys.stderr.write(
@@ -295,11 +368,8 @@ def app(name=None, runner=None):
 
 
 # noinspection PyPep8Naming
-def run(**DEFAULTS):
-    app_kwargs = {"name": None, "runner": None}  # type: Dict[str, Optional[str]]
-    if "__name__" in DEFAULTS:
-        app_kwargs["name"] = DEFAULTS.pop("__name__")
-    if "__file__" in DEFAULTS:
-        app_kwargs["runner"] = DEFAULTS.pop("__file__")
-    config(**DEFAULTS)
-    return app(**app_kwargs)
+def run(__name__=None, __file__=None, **DEFAULTS):
+    # type: (Optional[str], Optional[str], Dict[str, Any]) -> Optional['django.core.handlers.wsgi.WSGIHandler']
+    name, runner = setup(__name__, __name__)
+    config(__name__=name, __file__=runner, **DEFAULTS)
+    return app(__name__=name, __file__=runner)
