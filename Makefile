@@ -1,3 +1,6 @@
+ROOT_DIR:=$(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
+
+
 help:
 	@echo "clean-build - get rid of build artifacts & metadata"
 	@echo "clean-pyc - get rid of dross files"
@@ -59,4 +62,4 @@ cythonize: clean-build clean-pyc
 	cythonize -i -3 demo_project.py
 
 black:
-	black microscope.py
+	docker run -v $(ROOT_DIR):/code jbbarth/black *.py

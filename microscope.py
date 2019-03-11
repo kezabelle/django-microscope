@@ -12,7 +12,13 @@ from collections import Iterable, Sized
 from itertools import chain
 from django.conf import settings, LazySettings  # type: ignore
 from django.core.exceptions import ImproperlyConfigured  # type: ignore
-from django.urls import path, re_path
+
+try:
+    from django.urls import path, re_path
+except ImportError:
+    from django.conf.urls import url as re_path
+
+    path = None
 from django.utils.six import integer_types, string_types  # type: ignore
 from django.utils.functional import SimpleLazyObject as SLO  # type: ignore
 from django.utils.module_loading import import_string  # type: ignore
@@ -128,32 +134,46 @@ class Routes(list):
         return tuple(self)
 
     def _decorator(self, handler, url, view, name=None, kwargs=None):
-        if callable(url) and name is None and kwargs is None:
-            raise ValueError(
-                "Used @routes.path instead of @routes.path('path/', 'viewname', kwargs={...})"
-            )
-
         @functools.wraps(view)
         def decorator(view):
             if hasattr(view, "as_view") and callable(view.as_view):
                 view = view.as_view()
             decorated = handler(url, view, name=name, kwargs=kwargs)
             self.add(decorated)
+            return view
 
         return decorator
 
-    def path(self, url, view=None, name=None, kwargs=None):
-        return self._decorator(
-            url=url, name=name, view=view, kwargs=kwargs, handler=path
-        )
+    if path is None:
 
-    def regex(self, url, view, name=None, kwargs=None):
+        def path(self, url, view=None, name=None, kwargs=None):
+            raise NotImplementedError(
+                "This version of Django doesn't have django.urls.path(...)"
+            )
+
+    else:
+
+        def path(self, url, view=None, name=None, kwargs=None):
+            if callable(url) and name is None and kwargs is None:
+                raise ValueError(
+                    "Used @routes.path instead of @routes.path('path/', 'viewname', kwargs={...})"
+                )
+            return self._decorator(
+                url=url, name=name, view=view, kwargs=kwargs, handler=path
+            )
+
+    def regex(self, url, view=None, name=None, kwargs=None):
+        if callable(url) and name is None and kwargs is None:
+            raise ValueError(
+                "Used @routes.regex instead of @routes.regex('^path$', 'viewname', kwargs={...})"
+            )
         return self._decorator(
             url=url, name=name, view=view, kwargs=kwargs, handler=re_path
         )
 
 
 routes = Routes()
+routes.__name__ = "microscope.routes"
 
 
 # noinspection PyPep8Naming

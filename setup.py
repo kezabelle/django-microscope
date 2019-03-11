@@ -56,11 +56,10 @@ setup(
     description=SHORT_DESCRIPTION[0:200],
     long_description=LONG_DESCRIPTION,
     packages=[],
-    py_modules=['microscope'],
+    py_modules=["microscope"],
     include_package_data=True,
     install_requires=["Django>=1.11", "django-environ>=0.4.4"],
-    tests_require=[
-    ],
+    tests_require=[],
     zip_safe=False,
     keywords=" ".join(KEYWORDS),
     license=LICENSE,
