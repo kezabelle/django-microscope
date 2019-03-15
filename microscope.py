@@ -10,8 +10,10 @@ import os
 import sys
 from collections import Iterable, Sized
 from itertools import chain
+import django
 from django.conf import settings, LazySettings  # type: ignore
 from django.core.exceptions import ImproperlyConfigured  # type: ignore
+from django.utils import six
 
 try:
     from django.urls import path, re_path
@@ -61,6 +63,11 @@ if TYPE_CHECKING:
 
 __all__ = ["app", "config", "run", "env"]
 logger = logging.getLogger(__name__)
+# logging without having yet called basicConfig (or setting up
+# django's logging ... which won't necessarily have happened yet either) just
+# spews out jazz about no configured handlers instead of printing anything.
+logger.setLevel(logging.INFO)
+logger.addHandler(logging.StreamHandler())
 
 
 class TrackedEnv(Env):
@@ -91,7 +98,6 @@ class TrackedEnv(Env):
 
 env = TrackedEnv()
 
-
 # noinspection PyClassHasNoInit
 class SimpleLazyObject(SLO):
     def __str__(self):  # type: ignore
@@ -111,7 +117,9 @@ class SimpleLazyObject(SLO):
 def flatten(items):
     """ https://stackoverflow.com/a/40857703 """
     for x in items:
-        if isinstance(x, Iterable) and not isinstance(x, (str, bytes)):
+        if isinstance(x, Iterable) and not (
+            isinstance(x, six.string_types) or isinstance(x, six.binary_type)
+        ):
             for item in flatten(x):
                 yield item
         else:
@@ -177,13 +185,13 @@ routes.__name__ = "microscope.routes"
 
 
 # noinspection PyPep8Naming
-def config(__name__=None, __file__=None, **DEFAULTS):
+def config(name_hint=None, file_hint=None, **DEFAULTS):
     # type: (Optional[str], Optional[str], Dict[str, Any]) -> LazySettings
     if settings.configured:
         raise RuntimeError(
             "config() has already been called, OR django.conf.settings.configure() was already called"
         )
-    setup(__name__, __name__)
+    setup(name_hint, file_hint)
 
     options = {}  # type: Dict[str, Any]
     try:
@@ -257,6 +265,7 @@ class BoundaryWarning(MetaPathFinder):
         "root_location_length",
         "app_location_length",
         "already_warned",
+        "ok_roots",
     )
 
     def __init__(self, root_location, this_app):
@@ -266,19 +275,29 @@ class BoundaryWarning(MetaPathFinder):
         self.app_location = this_app
         self.app_location_length = len(this_app)
         self.already_warned = set()  # type: Set[Tuple[str, str, str]]
+        self.ok_roots = tuple(
+            {
+                self.app_location,
+                # site-packages?
+                os.path.dirname(os.path.dirname(django.__file__)),
+                # stdlib/builtin *module*
+                os.path.dirname(os.__file__),
+                # stdlib/builtin *package*
+                os.path.dirname(os.path.dirname(logging.__file__)),
+            }
+        )
 
     def find_module(self, fullname, path=None):
         if path is None:
             return None
-        package_root, _, remainder = fullname.partition(".")
-        package_root_length = len(package_root)
         for package_path in path:
-            root = package_path[0 : self.root_location_length]
-            this_module = package_path[0 : self.app_location_length]
-            within_root = root == self.root_location
-            not_this_app = this_module != self.app_location
-            related_module = this_module[-package_root_length:] == package_root
-            if within_root and not_this_app and related_module:
+            # Check our expected roots to see if we're within a sanctioned location.
+            # Under py2, this may yield more results than desired for packages outside
+            # the roots, if they don't use `from __future__ import absolute_import`
+            # as they'll look for package local files first...
+            if package_path.startswith(self.ok_roots):
+                continue
+            else:
                 msgparts = (fullname, "".join(path), self.app_location)
                 if msgparts not in self.already_warned:
                     logger.error(
@@ -349,7 +368,6 @@ class Setup(object):
             name = None
             parent_frame = sys._getframe()
             while parent_frame.f_locals:
-                print(parent_frame.f_locals)
                 if "__name__" in parent_frame.f_locals:
                     runner = parent_frame.f_code.co_filename
                     name = parent_frame.f_locals["__name__"]
@@ -361,14 +379,14 @@ class Setup(object):
 setup = Setup()
 
 
-def app(__name__=None, __file__=None):
+def app(name_hint=None, file_hint=None):
     # type: (Optional[str], Optional[str]) -> Optional['django.core.handlers.wsgi.WSGIHandler']
     if not settings.configured:
         raise RuntimeError("config() has not been called")
-    name, runner = setup(__name__, __name__)
+    name, runner = setup(name_hint, file_hint)
 
     if env:
-        logger.warning("Read %s from environment variables", env)
+        logger.info("Read %s from environment variables", env)
 
     if name == "__main__":
         if len(sys.argv) > 1 and sys.argv[1] == "diffsettings":
@@ -388,8 +406,8 @@ def app(__name__=None, __file__=None):
 
 
 # noinspection PyPep8Naming
-def run(__name__=None, __file__=None, **DEFAULTS):
+def run(name_hint=None, file_hint=None, **DEFAULTS):
     # type: (Optional[str], Optional[str], Dict[str, Any]) -> Optional['django.core.handlers.wsgi.WSGIHandler']
-    name, runner = setup(__name__, __name__)
-    config(__name__=name, __file__=runner, **DEFAULTS)
-    return app(__name__=name, __file__=runner)
+    name, runner = setup(name_hint, file_hint)
+    config(name_hint=name, file_hint=runner, **DEFAULTS)
+    return app(name_hint=name, file_hint=runner)

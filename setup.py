@@ -58,7 +58,7 @@ setup(
     packages=[],
     py_modules=["microscope"],
     include_package_data=True,
-    install_requires=["Django>=1.11", "django-environ>=0.4.4"],
+    install_requires=["Django>=1.9", "django-environ>=0.4.4"],
     tests_require=[],
     zip_safe=False,
     keywords=" ".join(KEYWORDS),
