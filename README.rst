@@ -2,7 +2,7 @@ django-microscope
 ================================
 
 :author: Keryn Knight
-:version: 0.1.0
+:version: 0.1.1
 
 Convert a `Django`_ app into a standalone `Django`_ project so you can run it
 independently as a microservice or what-have-you.

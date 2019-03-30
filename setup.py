@@ -29,7 +29,7 @@ KEYWORDS = ("django", "django-microscope", "manage.py", "microservice", "microsc
 
 setup(
     name="django-microscope",
-    version="0.1.0",
+    version="0.1.1",
     author="Keryn Knight",
     author_email="django-microscope@kerynknight.com",
     maintainer="Keryn Knight",
