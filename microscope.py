@@ -61,7 +61,7 @@ if TYPE_CHECKING:
     import django  # type: ignore
 
 
-__all__ = ["app", "config", "run", "env"]
+__all__ = ["app", "config", "run", "env", "urlconf", "routes", "setup"]
 logger = logging.getLogger(__name__)
 # logging without having yet called basicConfig (or setting up
 # django's logging ... which won't necessarily have happened yet either) just
