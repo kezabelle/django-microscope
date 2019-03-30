@@ -56,12 +56,17 @@ try:
 except ImportError:
     MetaPathFinder = object  # type: ignore
 
-if TYPE_CHECKING:
-    # noinspection PyUnresolvedReferences
-    import django  # type: ignore
+
+__version_info__ = '0.1.1'
+__version__ = '0.1.1'
+version = '0.1.1'
+VERSION = '0.1.1'
+
+def get_version():
+    return version
 
 
-__all__ = ["app", "config", "run", "env", "urlconf", "routes", "setup"]
+__all__ = ["app", "config", "run", "env", "urlconf", "routes", "setup", "get_version"]
 logger = logging.getLogger(__name__)
 # logging without having yet called basicConfig (or setting up
 # django's logging ... which won't necessarily have happened yet either) just

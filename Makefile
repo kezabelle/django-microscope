@@ -36,7 +36,7 @@ clean: clean-build clean-pyc;
 test: clean-pyc
 	python -B -R -tt -W ignore setup.py test
 
-dist: test clean
+dist: clean
 	python setup.py sdist bdist_wheel
 
 check: dist
